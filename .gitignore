@@ -25,6 +25,11 @@ wheels/
 venv/
 ENV/
 .env
+dda-gcl/
+
+# Database & Uploads
+database/*.db
+uploads/
 
 # IDEs
 .vscode/
