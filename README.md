@@ -98,19 +98,4 @@ npm run dev
 
 ---
 
-## 👤 Tài khoản mặc định
 
-Sau khi khởi chạy thành công, bạn có thể đăng nhập bằng các tài khoản sau (hoặc tự tạo tài khoản mới ở giao diện Đăng ký):
-
-- **Quản trị viên (Admin):**
-  - Username: `admin`
-  - Password: `admin123`
-
-- **Người dùng thường (User):**
-  - Username: `user`
-  - Password: `user123`
-
----
-
-## 📝 Giấy phép
-Dự án được phân phối dưới giấy phép MIT. Phù hợp cho cả mục đích học tập và nghiên cứu học thuật.
