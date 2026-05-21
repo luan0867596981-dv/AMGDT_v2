@@ -5,9 +5,14 @@
   **Attention Mechanism Neural Network for Drug-Disease Association Prediction**
 
   [![React](https://img.shields.io/badge/Frontend-React.js-61DAFB?style=flat-square&logo=react)](https://reactjs.org/)
-  [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
+  [![Vite](https://img.shields.io/badge/Build-Vite-646CFF?style=flat-square&logo=vite)](https://vitejs.dev/)
   [![TailwindCSS](https://img.shields.io/badge/Styling-Tailwind_CSS-38B2AC?style=flat-square&logo=tailwind-css)](https://tailwindcss.com/)
-  [![Python](https://img.shields.io/badge/AI_Engine-Python_3.10+-3776AB?style=flat-square&logo=python)](https://www.python.org/)
+  [![JavaScript](https://img.shields.io/badge/Language-JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+  <br/>
+  [![Python](https://img.shields.io/badge/Language-Python_3.10+-3776AB?style=flat-square&logo=python)](https://www.python.org/)
+  [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
+  [![PyTorch](https://img.shields.io/badge/AI_Model-PyTorch-EE4C2C?style=flat-square&logo=pytorch)](https://pytorch.org/)
+  [![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org/)
 </div>
 
 <br />
