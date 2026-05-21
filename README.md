@@ -1,0 +1,111 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/network.svg" alt="AMNTDDA Logo" width="100" />
+
+  # AMNTDDA
+  **Attention Mechanism Neural Network for Drug-Disease Association Prediction**
+
+  [![React](https://img.shields.io/badge/Frontend-React.js-61DAFB?style=flat-square&logo=react)](https://reactjs.org/)
+  [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
+  [![TailwindCSS](https://img.shields.io/badge/Styling-Tailwind_CSS-38B2AC?style=flat-square&logo=tailwind-css)](https://tailwindcss.com/)
+  [![Python](https://img.shields.io/badge/AI_Engine-Python_3.10+-3776AB?style=flat-square&logo=python)](https://www.python.org/)
+</div>
+
+<br />
+
+## 🌟 Giới thiệu Dự án
+
+**AMNTDDA** (Attention Mechanism Neural Network for Drug-Disease Association) là một hệ thống ứng dụng công nghệ Trí tuệ Nhân tạo (Học sâu) tích hợp Cơ chế Chú ý (Attention Mechanism) để phân tích và dự đoán mối liên kết tiềm năng giữa Thuốc (Drug) và Bệnh (Disease).
+
+Dự án cung cấp một giao diện quản trị chuyên nghiệp, cho phép các nhà nghiên cứu y sinh học, bác sĩ và người dùng dễ dàng:
+- Khám phá và tra cứu tương tác Thuốc - Bệnh.
+- Trực quan hóa cấu trúc phân tử của thuốc qua biểu đồ phân tử tương tác.
+- So sánh hiệu suất mô hình thông qua các độ đo tiên tiến (AUC, AUPR, F1, MCC).
+- Quản trị hệ thống, phân quyền người dùng và nhật ký hoạt động chi tiết.
+
+---
+
+## ✨ Tính năng Nổi bật
+
+- 🚀 **Dự đoán Liên kết (Prediction):** Sử dụng mô hình Deep Learning có độ chính xác cao.
+- 📊 **Thống kê & Trực quan (Analytics):** Dashboard báo cáo thời gian thực về dữ liệu (C-dataset, F-dataset) và hiệu suất.
+- 🧬 **Cấu trúc Phân tử:** Tích hợp SMILES Drawer để hiển thị trực quan cấu trúc hóa học phân tử thuốc.
+- 🔐 **Bảo mật & Phân quyền:** Xác thực JWT an toàn, quản lý người dùng 2 cấp độ (Admin / User), bao gồm tính năng khôi phục mật khẩu.
+- 🎨 **Giao diện Hiện đại (UI/UX):** Glassmorphism, Dark mode, Fully Responsive.
+
+---
+
+## 🛠️ Cài đặt Môi trường (Installation)
+
+### 1. Yêu cầu hệ thống
+- **Python**: Phiên bản 3.9 hoặc mới hơn.
+- **Node.js**: Phiên bản 16.x hoặc mới hơn (khuyên dùng bản LTS).
+- **Trình quản lý gói**: `npm` hoặc `yarn`, `pip`.
+
+### 2. Tải mã nguồn
+```bash
+git clone https://github.com/luan0867596981-dv/AMGDT_v2.git
+cd AMGDT_v2
+```
+
+### 3. Cài đặt Backend (FastAPI / Python)
+Di chuyển vào thư mục dự án và thiết lập môi trường ảo Python:
+```bash
+# Tạo môi trường ảo (Virtual Environment)
+python -m venv venv
+
+# Kích hoạt môi trường (Windows)
+venv\Scripts\activate
+# (Nếu dùng MacOS/Linux): source venv/bin/activate
+
+# Cài đặt các thư viện cần thiết
+pip install -r requirements.txt
+```
+
+### 4. Cài đặt Frontend (React / Vite)
+Di chuyển vào thư mục Frontend và cài đặt thư viện Javascript:
+```bash
+cd frontend
+npm install
+# hoặc: yarn install
+```
+
+---
+
+## 🚀 Hướng dẫn Khởi chạy (Running the Application)
+
+Để hệ thống hoạt động đầy đủ, bạn cần khởi chạy song song cả **Backend** và **Frontend** ở 2 cửa sổ Terminal khác nhau.
+
+### Terminal 1: Khởi động Backend (FastAPI Server)
+```bash
+# Đảm bảo bạn đang ở thư mục gốc của dự án và đã kích hoạt (activate) môi trường ảo
+uvicorn main:app --reload
+```
+> Server API sẽ chạy tại: `http://127.0.0.1:8000`
+
+### Terminal 2: Khởi động Frontend (React UI)
+```bash
+# Mở một cửa sổ Terminal mới
+cd frontend
+npm run dev
+# hoặc: yarn dev
+```
+> Trình duyệt sẽ tự động mở giao diện ứng dụng tại: `http://localhost:5173`
+
+---
+
+## 👤 Tài khoản mặc định
+
+Sau khi khởi chạy thành công, bạn có thể đăng nhập bằng các tài khoản sau (hoặc tự tạo tài khoản mới ở giao diện Đăng ký):
+
+- **Quản trị viên (Admin):**
+  - Username: `admin`
+  - Password: `admin123`
+
+- **Người dùng thường (User):**
+  - Username: `user`
+  - Password: `user123`
+
+---
+
+## 📝 Giấy phép
+Dự án được phân phối dưới giấy phép MIT. Phù hợp cho cả mục đích học tập và nghiên cứu học thuật.
