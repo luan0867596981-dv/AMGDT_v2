@@ -70,7 +70,7 @@ class _SelfAttention(nn.Module):
 
 
 class _GTLayer(nn.Module):
-    """Single Graph-Transformer layer (as used in AMNTDDA)."""
+    """Single Graph-Transformer layer with Pre-LN."""
     def __init__(self, d_model: int):
         super().__init__()
         self.attention = _SelfAttention(d_model)
@@ -81,30 +81,36 @@ class _GTLayer(nn.Module):
         self.layer_norm2 = nn.LayerNorm(d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        attn_out = self.O(self.attention(x))
-        x = self.layer_norm1(x + attn_out)
-        ffn_out = self.FFN_layer2(F.relu(self.FFN_layer1(x)))
-        return self.layer_norm2(x + ffn_out)
+        # Pre-LN Attention
+        attn_out = self.O(self.attention(self.layer_norm1(x)))
+        x = x + attn_out
+        # Pre-LN FFN
+        ffn_out = self.FFN_layer2(F.relu(self.FFN_layer1(self.layer_norm2(x))))
+        return x + ffn_out
 
 
 class GraphTransformer(nn.Module):
     """
     Projects similarity matrix rows into d_model-dimensional embeddings
-    via a linear projection followed by N stacked GT layers.
+    via a linear projection followed by N stacked GT layers with residual connections,
+    LayerNorm, and dropout.
 
     Input:  sim_matrix [N_nodes, N_nodes]
     Output: node_emb   [N_nodes, d_model]
     """
-    def __init__(self, in_dim: int, d_model: int, num_layers: int = 2):
+    def __init__(self, in_dim: int, d_model: int, num_layers: int = 2, dropout: float = 0.1):
         super().__init__()
         self.linear_h = nn.Linear(in_dim, d_model)
         self.layers = nn.ModuleList([_GTLayer(d_model) for _ in range(num_layers)])
+        self.layer_norms = nn.ModuleList([nn.LayerNorm(d_model) for _ in range(num_layers)])
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.linear_h(x)        # [N, d_model]
         h = h.unsqueeze(0)          # [1, N, d_model]  — treat sequence dim
-        for layer in self.layers:
-            h = layer(h)
+        for layer, ln in zip(self.layers, self.layer_norms):
+            h_next = layer(h)
+            h = ln(h + self.dropout(h_next))
         return h.squeeze(0)          # [N, d_model]
 
 
@@ -224,6 +230,16 @@ class AMNTDDA(nn.Module):
             dim_feedforward=2048, batch_first=False
         )
 
+        # ---- Adaptive Attention Fusion & Projection Head -----------------
+        from models.attention_fusion import AttentionFusion
+        self.drug_fusion = AttentionFusion(embed_dim=d_model)
+        self.disease_fusion = AttentionFusion(embed_dim=d_model)
+        self.proj_head = nn.Sequential(
+            nn.Linear(d_model, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128)
+        )
+
         # ---- Final MLP -------------------------------------------------------
         # input: concat(drug_emb[200], disease_emb[200]) = 400
         # B-dataset might use 200 (element-wise product or sum)
@@ -291,8 +307,9 @@ class AMNTDDA(nn.Module):
                 tgt=disease_enc.unsqueeze(1)     # Q   = disease queries
             ).squeeze(1)                          # [N_dis, 200]
 
-            drug_final    = drug_enc    + drug_cross
-            disease_final = disease_enc + disease_cross
+            # Use the Adaptive Attention Fusion Module
+            drug_final    = self.drug_fusion(drug_enc, drug_cross)
+            disease_final = self.disease_fusion(disease_enc, disease_cross)
         else:
             # Proven path: directly use GT output (AUC 0.965 on C-dataset)
             drug_final    = drug_h
@@ -362,7 +379,16 @@ def load_amntdda_model(model_path: str,
     )
 
     # Determine MLP input size from checkpoint if possible
-    state_dict = torch.load(model_path, map_location=device, weights_only=False)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    
+    if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        state_dict = checkpoint["state_dict"]
+        best_val_threshold = checkpoint.get("best_val_threshold", 0.5)
+    else:
+        state_dict = checkpoint
+        best_val_threshold = 0.5
+        
+    model.best_val_threshold = best_val_threshold
     
     if "mlp.0.weight" in state_dict:
         ckpt_mlp_in = state_dict["mlp.0.weight"].shape[1]
@@ -372,12 +398,12 @@ def load_amntdda_model(model_path: str,
 
     result = model.load_state_dict(state_dict, strict=strict)
 
-    print(f"[AMNTDDA] Successfully loaded weights from {model_path} (strict={strict})")
+    print(f"[AMNTDDA] Successfully loaded weights from {model_path} (strict={strict}), best_val_threshold={best_val_threshold:.4f}")
     
     if result.missing_keys:
-        print(f"  ⚠ Missing ({len(result.missing_keys)})")
+        print(f"  [WARN] Missing ({len(result.missing_keys)})")
     if result.unexpected_keys:
-        print(f"  ⚠ Unexpected ({len(result.unexpected_keys)})")
+        print(f"  [WARN] Unexpected ({len(result.unexpected_keys)})")
 
     return model.to(device).eval()
 
