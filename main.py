@@ -164,10 +164,12 @@ def _build_name_mapping(node_ids: list[str], num_drugs: int, num_diseases: int,
     return d_names, d_smiles, di_names
 
 
-def load_dataset_resources(dataset_name: str, model_type: str = "amntdda"):
+def load_dataset_resources(dataset_name: str, model_type: str = "amntdda", require_model: bool = True):
     cache_key = f"{dataset_name}_{model_type}"
     if cache_key in MODELS_CACHE:
-        return MODELS_CACHE[cache_key]
+        cached_resources = MODELS_CACHE[cache_key]
+        if not require_model or cached_resources[0] is not None:
+            return cached_resources
 
     if dataset_name not in DATASET_CFG:
         raise ValueError(f"Unknown dataset: {dataset_name}")
@@ -183,7 +185,8 @@ def load_dataset_resources(dataset_name: str, model_type: str = "amntdda"):
         
     model_path = os.path.join(root, model_rel_path)
     
-    if not os.path.exists(model_path):
+    model_exists = os.path.exists(model_path)
+    if not model_exists and require_model:
         # If baseline doesn't exist, fallback or error
         if model_type == "baseline":
             raise FileNotFoundError(f"Baseline model not found at {model_path}. Please train baseline first.")
@@ -195,7 +198,7 @@ def load_dataset_resources(dataset_name: str, model_type: str = "amntdda"):
     allnode_path  = os.path.join(root, cfg["allnode_path"])
 
     print(f"\n=== Loading {dataset_name} ({model_type}) ===")
-    print(f"  Model  : {model_path}")
+    print(f"  Model exists: {model_exists} | Required: {require_model}")
 
     # Load similarity matrices
     drug_sim    = torch.load(drug_sim_path,    map_location=DEVICE, weights_only=False)
@@ -205,13 +208,20 @@ def load_dataset_resources(dataset_name: str, model_type: str = "amntdda"):
     num_diseases = disease_sim.shape[0]
 
     # Load model
-    model = load_amntdda_model(
-        model_path=model_path,
-        num_drugs=num_drugs,
-        num_diseases=num_diseases,
-        device=DEVICE,
-        strict=False,
-    )
+    model = None
+    if model_exists:
+        try:
+            model = load_amntdda_model(
+                model_path=model_path,
+                num_drugs=num_drugs,
+                num_diseases=num_diseases,
+                device=DEVICE,
+                strict=False,
+            )
+        except Exception as e:
+            if require_model:
+                raise e
+            print(f"  [WARN] Failed to load model weights (non-critical): {e}")
 
     # Node name mappings
     node_ids = _read_node_ids(allnode_path)
@@ -238,7 +248,7 @@ def load_dataset_resources(dataset_name: str, model_type: str = "amntdda"):
         drug_mapping, disease_mapping
     )
 
-    print(f"  [OK] {dataset_name} ({model_type}) fully loaded.")
+    print(f"  [OK] {dataset_name} ({model_type}) resources loaded.")
 
     MODELS_CACHE[cache_key] = (model, drug_sim, disease_sim, d_names, d_smiles, di_names, node_ids)
     return MODELS_CACHE[cache_key]
@@ -253,7 +263,7 @@ async def get_nodes(dataset_name: str = "C-dataset"):
         if dataset_name == "all":
             for ds in DATASET_CFG.keys():
                 try:
-                    _, _, _, d_names, _, di_names, _ = load_dataset_resources(ds)
+                    _, _, _, d_names, _, di_names, _ = load_dataset_resources(ds, require_model=False)
                     all_drugs.update(d_names)
                     all_diseases.update(di_names)
                 except: continue
@@ -263,7 +273,7 @@ async def get_nodes(dataset_name: str = "C-dataset"):
                 "proteins": sorted(all_proteins)
             }
             
-        model, drug_sim, disease_sim, d_names, d_smiles, di_names, node_ids = load_dataset_resources(dataset_name)
+        model, drug_sim, disease_sim, d_names, d_smiles, di_names, node_ids = load_dataset_resources(dataset_name, require_model=False)
         return {"drugs": d_names, "diseases": di_names, "proteins": sorted(all_proteins)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -396,7 +406,7 @@ async def get_random_nodes(n_drugs: int = 5, n_diseases: int = 5, dataset_name: 
     if dataset_name == "all":
         actual_ds = random.choice(list(DATASET_CFG.keys()))
         
-    model, drug_sim, disease_sim, d_names, d_smiles, di_names, node_ids = load_dataset_resources(actual_ds)
+    model, drug_sim, disease_sim, d_names, d_smiles, di_names, node_ids = load_dataset_resources(actual_ds, require_model=False)
     sel_drugs = random.sample(d_names, min(n_drugs, len(d_names)))
     sel_diseases = random.sample(di_names, min(n_diseases, len(di_names)))
     return {"drugs": sel_drugs, "diseases": sel_diseases, "dataset": actual_ds}

@@ -2,13 +2,26 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Download, Maximize, PlayCircle, Network, X, Info, Layers, Clipboard } from 'lucide-react';
 import ForceGraph2D from 'react-force-graph-2d';
 
-export default function DatasetGraph() {
-  const [dataset, setDataset] = useState('C');
+export default function DatasetGraph({ datasetName }) {
+  const getDatasetKey = (name) => {
+    if (!name) return 'C';
+    if (name === 'all') return 'all';
+    return name[0];
+  };
+
+  const [dataset, setDataset] = useState(getDatasetKey(datasetName));
   const [drugLimit, setDrugLimit] = useState(30);
   const [diseaseLimit, setDiseaseLimit] = useState(60);
   const [showProtein, setShowProtein] = useState(false);
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false);
+
+  // Sync with global datasetName selection from header
+  useEffect(() => {
+    if (datasetName) {
+      setDataset(getDatasetKey(datasetName));
+    }
+  }, [datasetName]);
   
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [stats, setStats] = useState(null);
@@ -24,8 +37,10 @@ export default function DatasetGraph() {
   
   const fgRef = useRef();
 
-  // Fetch available nodes for autocomplete when dataset changes
+  // Fetch available nodes for autocomplete and reset old graph data when dataset changes
   useEffect(() => {
+    setGraphData({ nodes: [], links: [] });
+    setStats(null);
     fetch(`http://127.0.0.1:8000/nodes?dataset_name=${dataset === 'all' ? 'all' : dataset + '-dataset'}`)
       .then(r => r.json())
       .then(d => setAvailableNodes(d))

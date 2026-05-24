@@ -617,7 +617,7 @@ function UserPortalInner() {
             <Route path="/thuoc" element={<ErrorBoundary><DrugList onNavigate={(tab, data) => { setSearchMode(data.type); setSearchQuery(data.query); setActiveTab(tab); navigate('/'); }} /></ErrorBoundary>} />
             <Route path="/benh" element={<ErrorBoundary><DiseaseList onNavigate={(tab, data) => { setSearchMode(data.type); setSearchQuery(data.query); setActiveTab(tab); navigate('/'); }} /></ErrorBoundary>} />
             <Route path="/protein" element={<ErrorBoundary><ProteinList /></ErrorBoundary>} />
-            <Route path="/bieu-do-lien-ket" element={<ErrorBoundary><DatasetGraph /></ErrorBoundary>} />
+            <Route path="/bieu-do-lien-ket" element={<ErrorBoundary><DatasetGraph datasetName={datasetName} /></ErrorBoundary>} />
             <Route path="/admin" element={user?.role === 'admin' ? <ErrorBoundary><AdminDashboard /></ErrorBoundary> : <Navigate to="/" />} />
             <Route path="/admin/users" element={user?.role === 'admin' ? <ErrorBoundary><UserManagement /></ErrorBoundary> : <Navigate to="/" />} />
             <Route path="/profile" element={user ? <ErrorBoundary><UserProfile /></ErrorBoundary> : <Navigate to="/" />} />

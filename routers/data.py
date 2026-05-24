@@ -150,7 +150,7 @@ def _get_dataset_data(dataset: str):
     ds_name = _normalize_dataset(dataset)
     if ds_name not in DATASET_CFG:
         raise ValueError("Invalid dataset")
-    return load_dataset_resources(ds_name)
+    return load_dataset_resources(ds_name, require_model=False)
 
 
 # ─── /stats_detailed ────────────────────────────────────────────────────────
@@ -471,7 +471,7 @@ async def get_graph_network(
 
         for ds in datasets_to_load:
             try:
-                model, drug_sim, disease_sim, d_names, d_smiles, di_names, node_ids = load_dataset_resources(ds)
+                model, drug_sim, disease_sim, d_names, d_smiles, di_names, node_ids = load_dataset_resources(ds, require_model=False)
                 num_drugs = len(d_names)
 
                 assoc_path = os.path.join(root, 'data', 'raw', ds, 'DrugDiseaseAssociationNumber.csv')
