@@ -158,13 +158,31 @@ const FALLBACK_STATS = {
   'all': { drug_count: 1525, disease_count: 1320, protein_count: 4755, drug_disease_links: 22881 },
 };
 
-// Hardcoded performance metrics from training results
+// Hardcoded performance metrics from training results (10-fold cross-validation mean values)
 const PERF_METRICS = {
+  'B-dataset': [
+    { metric: 'AUC',  Original: 0.9806, Improved: 0.9873 },
+    { metric: 'AUPR', Original: 0.9799, Improved: 0.9850 },
+    { metric: 'F1',   Original: 0.9478, Improved: 0.9536 },
+    { metric: 'MCC',  Original: 0.8025, Improved: 0.8065 },
+  ],
   'C-dataset': [
-    { metric: 'AUC',  Original: 0.9681, Improved: 0.9734 },
-    { metric: 'AUPR', Original: 0.9665, Improved: 0.9730 },
-    { metric: 'F1',   Original: 0.9329, Improved: 0.9378 },
-    { metric: 'MCC',  Original: 0.7955, Improved: 0.8002 },
+    { metric: 'AUC',  Original: 0.9681, Improved: 0.9712 },
+    { metric: 'AUPR', Original: 0.9665, Improved: 0.9743 },
+    { metric: 'F1',   Original: 0.9329, Improved: 0.9436 },
+    { metric: 'MCC',  Original: 0.7955, Improved: 0.8327 },
+  ],
+  'F-dataset': [
+    { metric: 'AUC',  Original: 0.9574, Improved: 0.9741 },
+    { metric: 'AUPR', Original: 0.9548, Improved: 0.9786 },
+    { metric: 'F1',   Original: 0.9196, Improved: 0.9203 },
+    { metric: 'MCC',  Original: 0.7851, Improved: 0.8459 },
+  ],
+  'all': [
+    { metric: 'AUC',  Original: 0.9687, Improved: 0.9775 },
+    { metric: 'AUPR', Original: 0.9671, Improved: 0.9793 },
+    { metric: 'F1',   Original: 0.9335, Improved: 0.9392 },
+    { metric: 'MCC',  Original: 0.7944, Improved: 0.8284 },
   ],
 };
 
@@ -240,6 +258,7 @@ function UserPortalInner() {
   const [statsDetailed, setStatsDetailed] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState([]);
+  const [userPredictions, setUserPredictions] = useState([]);
   const [systemOnline, setSystemOnline] = useState(null);
   const [adminStats, setAdminStats] = useState(null);
 
@@ -314,6 +333,42 @@ function UserPortalInner() {
   useEffect(() => {
     fetchAdminStats();
   }, [fetchAdminStats]);
+
+  const fetchUserPredictions = useCallback(() => {
+    if (user && user.role !== 'admin' && token) {
+      fetch('http://127.0.0.1:8000/predictions/my', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+      .then(d => {
+        const formatDate = (isoStr) => {
+          if (!isoStr) return '';
+          try {
+            const d = new Date(isoStr);
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+          } catch (e) {
+            return isoStr;
+          }
+        };
+
+        const formatted = (d.logs || []).map(r => ({
+          query: r.drug_name || r.disease_name || "Mạng lưới ngẫu nhiên",
+          target_type: r.drug_name ? "Thuốc" : r.disease_name ? "Bệnh" : "Ngẫu nhiên",
+          method: r.prediction_type === 'single' ? "Đơn lẻ" : r.prediction_type === 'random' ? "Ngẫu nhiên" : "Đa mục tiêu",
+          model: r.model || "amntdda",
+          top_k: r.top_k,
+          created_at: formatDate(r.created_at)
+        }));
+        setUserPredictions(formatted);
+      })
+      .catch(e => console.warn('Fetch user predictions error:', e));
+    }
+  }, [user, token]);
+
+  useEffect(() => {
+    fetchUserPredictions();
+  }, [fetchUserPredictions]);
 
   // FIXED: Fetch per-dataset detailed stats when datasetName changes
   useEffect(() => {
@@ -408,7 +463,10 @@ function UserPortalInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         body: JSON.stringify({ drug: searchMode==='drug2disease'?searchQuery:null, disease: searchMode==='disease2drug'?searchQuery:null, dataset: datasetName, type: 'single', top_k: topK, result_count: d.results?.length || 0, model: selectedModel }),
-      }).then(() => fetchAdminStats()).catch(() => {});
+      }).then(() => {
+        fetchAdminStats();
+        fetchUserPredictions();
+      }).catch(() => {});
     } catch(e) { console.error(e); } finally { setIsLoading(false); }
   };
 
@@ -427,7 +485,10 @@ function UserPortalInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         body: JSON.stringify({ dataset: nD.dataset || datasetName, type: 'random', result_count: d.results?.length || 0, model: selectedModel }),
-      }).then(() => fetchAdminStats()).catch(() => {});
+      }).then(() => {
+        fetchAdminStats();
+        fetchUserPredictions();
+      }).catch(() => {});
     } catch(e) { console.error(e); } finally { setIsLoading(false); }
   };
 
@@ -444,7 +505,10 @@ function UserPortalInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         body: JSON.stringify({ dataset: datasetName, type: 'many-to-many', result_count: d.results?.length || 0, model: selectedModel }),
-      }).then(() => fetchAdminStats()).catch(() => {});
+      }).then(() => {
+        fetchAdminStats();
+        fetchUserPredictions();
+      }).catch(() => {});
     } catch(e) { console.error(e); } finally { setIsLoading(false); }
   };
 
@@ -710,6 +774,60 @@ function UserPortalInner() {
                 })()}
               </div>
 
+              {/* 3.5. Benchmark Datasets Table */}
+              <div className="bg-white dark:bg-slate-900 p-8 border dark:border-slate-800 rounded-[32px] shadow-sm overflow-x-auto">
+                <div className="flex items-center gap-3 mb-6">
+                  <Database className="text-teal-500" size={22} />
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                      Tóm tắt 3 tập dữ liệu benchmark
+                    </h3>
+                    <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">
+                      Thông số chi tiết về số lượng thực thể, liên kết và độ thưa thớt (Sparsity) của các tập dữ liệu chuẩn
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden border dark:border-slate-800 rounded-2xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <tr>
+                        <th className="px-6 py-4">Dataset</th>
+                        <th className="px-6 py-4 text-center">Thuốc</th>
+                        <th className="px-6 py-4 text-center">Bệnh</th>
+                        <th className="px-6 py-4 text-center">Protein</th>
+                        <th className="px-6 py-4 text-center">Liên kết Thuốc–Bệnh</th>
+                        <th className="px-6 py-4 text-center">Liên kết Thuốc–Protein</th>
+                        <th className="px-6 py-4 text-center">Liên kết Bệnh–Protein</th>
+                        <th className="px-6 py-4 text-right">Sparsity</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y dark:divide-slate-800">
+                      {[
+                        { dataset: 'B-dataset', drugs: 269, diseases: 598, proteins: 1021, drug_disease: 18416, drug_protein: 3110, disease_protein: 5898, sparsity: '0.1144', colorClass: 'text-indigo-600 dark:text-indigo-400' },
+                        { dataset: 'C-dataset', drugs: 663, diseases: 409, proteins: 993, drug_disease: 2532, drug_protein: 3773, disease_protein: 10734, sparsity: '0.0093', colorClass: 'text-teal-600 dark:text-teal-400' },
+                        { dataset: 'F-dataset', drugs: 593, diseases: 313, proteins: 2741, drug_disease: 1933, drug_protein: 3243, disease_protein: 54265, sparsity: '0.0104', colorClass: 'text-purple-600 dark:text-purple-400' },
+                      ].map((row, idx) => (
+                        <tr key={row.dataset} className="text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                          <td className={cn("px-6 py-4 font-black uppercase tracking-tight", row.colorClass)}>{row.dataset}</td>
+                          <td className="px-6 py-4 text-center text-blue-600 dark:text-blue-400 font-extrabold">{row.drugs.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-rose-600 dark:text-rose-400 font-extrabold">{row.diseases.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-emerald-600 dark:text-emerald-400 font-extrabold">{row.proteins.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-slate-700 dark:text-slate-300 font-bold">{row.drug_disease.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-slate-700 dark:text-slate-300 font-bold">{row.drug_protein.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-slate-700 dark:text-slate-300 font-bold">{row.disease_protein.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right text-slate-500 dark:text-slate-400 font-mono font-semibold">{row.sparsity}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 flex justify-between items-center text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                  <span>* Bảng tóm tắt thông số phân phối benchmark</span>
+                  <span>* Nguồn: Table 1 — Summary of three benchmark datasets (Paper gốc)</span>
+                </div>
+              </div>
+
               {/* 4. Phân phối & Truy cập nhanh */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 border dark:border-slate-800 rounded-[32px] shadow-sm">
@@ -785,101 +903,85 @@ function UserPortalInner() {
                     </div>
                   );
                 })()}
-
-                {(() => {
-                  const BENCHMARK_TABLE = [
-                    { dataset: 'B-dataset', drugs: 269, diseases: 598, proteins: 1021, drug_disease: 18416, drug_protein: 3110, disease_protein: 5898, sparsity: '0.1144' },
-                    { dataset: 'C-dataset', drugs: 663, diseases: 409, proteins: 993, drug_disease: 2532, drug_protein: 3773, disease_protein: 10734, sparsity: '0.0093' },
-                    { dataset: 'F-dataset', drugs: 593, diseases: 313, proteins: 2741, drug_disease: 1933, drug_protein: 3243, disease_protein: 54265, sparsity: '0.0104' },
-                  ];
-                  return (
-                    <div style={{ background: 'var(--card-bg, #1e293b)', borderRadius: '12px', padding: '20px', border: '1px solid var(--border-color, #334155)', marginTop: '16px', overflowX: 'auto' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        📋 Tóm tắt 3 tập dữ liệu benchmark
-                      </h3>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #334155' }}>
-                            {['Dataset', 'Thuốc', 'Bệnh', 'Protein', 'Liên kết Thuốc–Bệnh', 'Liên kết Thuốc–Protein', 'Liên kết Bệnh–Protein', 'Sparsity'].map(col => (
-                              <th key={col} style={{ padding: '10px 12px', textAlign: col === 'Dataset' ? 'left' : 'right', color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                {col}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {BENCHMARK_TABLE.map((row, idx) => (
-                            <tr key={row.dataset} style={{ borderBottom: '1px solid #1e293b', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                              <td style={{ padding: '10px 12px', fontWeight: 700, color: idx === 0 ? '#818cf8' : idx === 1 ? '#0d9488' : '#a78bfa' }}>{row.dataset}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#3b82f6', fontWeight: 600 }}>{row.drugs.toLocaleString()}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#ef4444', fontWeight: 600 }}>{row.diseases.toLocaleString()}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#22c55e', fontWeight: 600 }}>{row.proteins.toLocaleString()}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#f1f5f9' }}>{row.drug_disease.toLocaleString()}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#f1f5f9' }}>{row.drug_protein.toLocaleString()}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#f1f5f9' }}>{row.disease_protein.toLocaleString()}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#94a3b8', fontFamily: 'monospace' }}>{row.sparsity}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <p style={{ marginTop: '10px', fontSize: '11px', color: '#475569', textAlign: 'right' }}>
-                        * Nguồn: Table 1 — Summary of three benchmark datasets (Paper gốc)
-                      </p>
-                    </div>
-                  );
-                })()}
               </div>
 
               {/* 6. Lịch sử dự đoán gần đây (NOW AT BOTTOM) */}
-              <div className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-[32px] shadow-sm overflow-hidden">
-                <div className="p-8 border-b dark:border-slate-800 flex justify-between items-center">
-                  <h3 className="text-xl font-black flex items-center gap-3"><Clipboard className="text-teal-500"/> Lịch sử dự đoán gần đây</h3>
-                  <button onClick={() => {setActiveTab('admin'); navigate('/admin');}} className="text-xs font-black text-teal-600 hover:underline uppercase tracking-widest">Xem tất cả</button>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <tr>
-                        <th className="px-8 py-4">Truy vấn</th>
-                        <th className="px-8 py-4">Loại</th>
-                        <th className="px-8 py-4">Phương thức</th>
-                        <th className="px-8 py-4">Mô hình</th>
-                        <th className="px-8 py-4 text-center">Top-K</th>
-                        <th className="px-8 py-4 text-right">Thời gian</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y dark:divide-slate-800">
-                      {((adminStats?.recent_predictions) || []).map((r, i) => (
-                        <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                          <td className="px-8 py-4 font-bold text-slate-700 dark:text-slate-200">{r.query}</td>
-                          <td className="px-8 py-4">
-                             <div className="flex items-center gap-2">
-                                <span className="text-xs">{r.target_type === 'Thuốc' ? '💊' : r.target_type === 'Bệnh' ? '❤️' : '🔀'}</span>
-                                <span className="text-[10px] font-bold text-slate-500">{r.target_type}</span>
-                             </div>
-                          </td>
-                          <td className="px-8 py-4">
-                            <span className={clsx(
-                              "px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter",
-                              r.method === 'Đơn lẻ' ? "bg-blue-100 text-blue-700" : r.method === 'Ngẫu nhiên' ? "bg-amber-100 text-amber-700" : "bg-purple-100 text-purple-700"
-                            )}>
-                              {r.method}
-                            </span>
-                          </td>
-                          <td className="px-8 py-4"><span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded text-[10px] font-mono font-bold text-slate-500">{r.model}</span></td>
-                          <td className="px-8 py-4 text-center font-bold text-teal-600">{r.top_k}</td>
-                          <td className="px-8 py-4 text-right text-[10px] font-bold text-slate-400">{r.created_at}</td>
-                        </tr>
-                      ))}
-                      {(!adminStats?.recent_predictions || adminStats.recent_predictions.length === 0) && (
+              {user && (
+                <div className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-[32px] shadow-sm overflow-hidden animate-in fade-in">
+                  <div className="p-8 border-b dark:border-slate-800 flex justify-between items-center">
+                    <h3 className="text-xl font-black flex items-center gap-3">
+                      <Clipboard className="text-teal-500"/> 
+                      {user.role === 'admin' ? "Lịch sử dự đoán hệ thống" : "Lịch sử dự đoán của tôi"}
+                    </h3>
+                    {user.role === 'admin' && (
+                      <button 
+                        onClick={() => {setActiveTab('admin'); navigate('/admin');}} 
+                        className="text-xs font-black text-teal-600 hover:underline uppercase tracking-widest"
+                      >
+                        Xem tất cả
+                      </button>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="bg-slate-50 dark:bg-slate-800/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                         <tr>
-                          <td colSpan="6" className="px-8 py-12 text-center text-slate-400 font-bold uppercase tracking-widest text-sm">Chưa có lịch sử dự đoán</td>
+                          <th className="px-8 py-4">Truy vấn</th>
+                          <th className="px-8 py-4">Loại</th>
+                          <th className="px-8 py-4">Phương thức</th>
+                          <th className="px-8 py-4">Mô hình</th>
+                          <th className="px-8 py-4 text-center">Top-K</th>
+                          <th className="px-8 py-4 text-right">Thời gian</th>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y dark:divide-slate-800">
+                        {(() => {
+                          const displayList = user.role === 'admin' 
+                            ? (adminStats?.recent_predictions || []) 
+                            : (userPredictions || []);
+
+                          if (displayList.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan="6" className="px-8 py-12 text-center text-slate-400 font-bold uppercase tracking-widest text-sm">
+                                  Chưa có lịch sử dự đoán
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return displayList.map((r, i) => (
+                            <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                              <td className="px-8 py-4 font-bold text-slate-700 dark:text-slate-200">{r.query}</td>
+                              <td className="px-8 py-4">
+                                 <div className="flex items-center gap-2">
+                                    <span className="text-xs">{r.target_type === 'Thuốc' ? '💊' : r.target_type === 'Bệnh' ? '❤️' : '🔀'}</span>
+                                    <span className="text-[10px] font-bold text-slate-500">{r.target_type}</span>
+                                 </div>
+                              </td>
+                              <td className="px-8 py-4">
+                                <span className={clsx(
+                                  "px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter",
+                                  r.method === 'Đơn lẻ' ? "bg-blue-100 text-blue-700" : r.method === 'Ngẫu nhiên' ? "bg-amber-100 text-amber-700" : "bg-purple-100 text-purple-700"
+                                )}>
+                                  {r.method}
+                                </span>
+                              </td>
+                              <td className="px-8 py-4">
+                                <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded text-[10px] font-mono font-bold text-slate-500">
+                                  {r.model}
+                                </span>
+                              </td>
+                              <td className="px-8 py-4 text-center font-bold text-teal-600">{r.top_k}</td>
+                              <td className="px-8 py-4 text-right text-[10px] font-bold text-slate-400">{r.created_at}</td>
+                            </tr>
+                          ));
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {selectedNode && <DetailDrawer node={selectedNode} onClose={()=>setSelectedNode(null)} />}
             </div>
