@@ -46,6 +46,7 @@ checkpoints/
 logs/
 results/*
 !results/tables/
+!results/result_train/
 node_modules/
 
 # OS
