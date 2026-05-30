@@ -1,0 +1,28 @@
+========================================================================
+             HỆ THỐNG DỰ ĐOÁN LIÊN KẾT THUỐC - BỆNH (AMNTDDA)
+                    TÀI KHOẢN VÀ HÀNH TRÌNH ĐĂNG NHẬP
+========================================================================
+
+Hệ thống hỗ trợ 2 vai trò truy cập với các tài khoản mặc định sau:
+
+1. TÀI KHOẢN QUẢN TRỊ VIÊN (ADMIN ACCOUNT)
+   - Mục đích: Quản lý người dùng, xem toàn bộ nhật ký hoạt động hệ thống, cấu hình hệ thống.
+   - Email: admin@amntdda.local
+   - Tên đăng nhập: admin
+   - Mật khẩu: admin123
+   - Vai trò (Role): admin
+
+2. TÀI KHOẢN NGƯỜI DÙNG THỬ (USER ACCOUNT)
+   - Mục đích: Thực hiện dự đoán, tìm kiếm tương tác, trực quan hóa biểu đồ.
+   - Email: user@amntdda.local
+   - Tên đăng nhập: user
+   - Mật khẩu: user123
+   - Vai trò (Role): user
+
+------------------------------------------------------------------------
+HƯỚNG DẪN ĐĂNG NHẬP:
+1. Đảm bảo ứng dụng đang chạy (Backend cổng 8000 và Frontend cổng 5173).
+2. Mở trình duyệt và truy cập: http://localhost:5173/login
+3. Nhập Email (hoặc Tên đăng nhập) và Mật khẩu tương ứng ở trên.
+4. Nhấn nút "Đăng nhập" để truy cập hệ thống.
+========================================================================

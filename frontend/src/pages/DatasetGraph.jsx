@@ -9,12 +9,63 @@ export default function DatasetGraph({ datasetName }) {
     return name[0];
   };
 
+  const datasetMaxLimits = {
+    B: { drugs: 269, diseases: 598 },
+    C: { drugs: 663, diseases: 409 },
+    F: { drugs: 593, diseases: 313 },
+    all: { drugs: 1525, diseases: 1320 }
+  };
+
   const [dataset, setDataset] = useState(getDatasetKey(datasetName));
   const [drugLimit, setDrugLimit] = useState(30);
   const [diseaseLimit, setDiseaseLimit] = useState(60);
   const [showProtein, setShowProtein] = useState(false);
   const [search, setSearch] = useState('');
-  const [showAll, setShowAll] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [modalTab, setModalTab] = useState('summary');
+  const [detailDataset, setDetailDataset] = useState(dataset === 'all' ? 'B' : dataset);
+  const [detailLinkType, setDetailLinkType] = useState('all');
+  const [detailSearch, setDetailSearch] = useState('');
+  const [detailPage, setDetailPage] = useState(1);
+  const [detailData, setDetailData] = useState([]);
+  const [detailTotal, setDetailTotal] = useState(0);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  // Sync detailDataset when global dataset changes
+  useEffect(() => {
+    if (dataset && dataset !== 'all') {
+      setDetailDataset(dataset);
+    }
+  }, [dataset]);
+
+  // Reset page when dataset, link type or search changes
+  useEffect(() => {
+    setDetailPage(1);
+  }, [detailDataset, detailLinkType, detailSearch]);
+
+  useEffect(() => {
+    if (!showStatsModal || modalTab !== 'details') return;
+    setDetailLoading(true);
+    const limit = 10;
+    const dsParam = detailDataset + '-dataset';
+    fetch(`http://127.0.0.1:8000/graph/connections?dataset=${dsParam}&link_type=${detailLinkType}&page=${detailPage}&limit=${limit}&search=${encodeURIComponent(detailSearch)}`)
+      .then(r => r.json())
+      .then(d => {
+        setDetailData(d.data || []);
+        setDetailTotal(d.total || 0);
+      })
+      .catch(e => console.error(e))
+      .finally(() => setDetailLoading(false));
+  }, [showStatsModal, modalTab, detailDataset, detailLinkType, detailSearch, detailPage]);
+
+
+  // Sync sliders limits when dataset changes to prevent values exceeding max bounds
+  useEffect(() => {
+    const maxD = datasetMaxLimits[dataset]?.drugs || 200;
+    const maxDi = datasetMaxLimits[dataset]?.diseases || 300;
+    setDrugLimit(prev => Math.min(prev, maxD));
+    setDiseaseLimit(prev => Math.min(prev, maxDi));
+  }, [dataset]);
 
   // Sync with global datasetName selection from header
   useEffect(() => {
@@ -51,7 +102,7 @@ export default function DatasetGraph({ datasetName }) {
     setLoading(true);
     try {
       const dsParam = dataset === 'all' ? 'all' : dataset;
-      const r = await fetch(`http://127.0.0.1:8000/graph/network?dataset=${dsParam}&drug_limit=${drugLimit}&disease_limit=${diseaseLimit}&show_protein=${showProtein}&search=${encodeURIComponent(search)}&show_all=${showAll}`);
+      const r = await fetch(`http://127.0.0.1:8000/graph/network?dataset=${dsParam}&drug_limit=${drugLimit}&disease_limit=${diseaseLimit}&show_protein=${showProtein}&search=${encodeURIComponent(search)}&show_all=false`);
       const d = await r.json();
       setGraphData({ nodes: d.nodes, links: d.edges });
       setStats(d.stats);
@@ -141,7 +192,7 @@ export default function DatasetGraph({ datasetName }) {
     ctx.save();
     ctx.globalAlpha = hoverNode && !isHi ? 0.05 : 0.4;
     ctx.strokeStyle = isHi ? '#f59e0b' : '#94a3b8';
-    ctx.lineWidth = isHi ? 2.5 / scale : 1 / scale;
+    ctx.lineWidth = isHi ? 3.0 / scale : (l.weight ? (l.weight * 1.5) / scale : 1 / scale);
     ctx.beginPath();
     ctx.moveTo(l.source.x, l.source.y);
     ctx.lineTo(l.target.x, l.target.y);
@@ -171,13 +222,13 @@ export default function DatasetGraph({ datasetName }) {
           </div>
 
           <div className="space-y-4">
-            <div className="flex justify-between"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số thuốc hiển thị</label><span className="font-black text-teal-600">{drugLimit}</span></div>
-            <input type="range" min="10" max="200" step="5" value={drugLimit} onChange={e=>setDrugLimit(parseInt(e.target.value))} className="w-full accent-teal-600"/>
+            <div className="flex justify-between"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số thuốc hiển thị</label><span className="font-black text-teal-600">{drugLimit} / {datasetMaxLimits[dataset]?.drugs || 200}</span></div>
+            <input type="range" min="10" max={datasetMaxLimits[dataset]?.drugs || 200} step="1" value={drugLimit} onChange={e=>setDrugLimit(parseInt(e.target.value))} className="w-full accent-teal-600"/>
           </div>
 
           <div className="space-y-4">
-            <div className="flex justify-between"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số bệnh hiển thị tối đa</label><span className="font-black text-rose-600">{diseaseLimit}</span></div>
-            <input type="range" min="10" max="300" step="5" value={diseaseLimit} onChange={e=>setDiseaseLimit(parseInt(e.target.value))} className="w-full accent-rose-600"/>
+            <div className="flex justify-between"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số bệnh hiển thị tối đa</label><span className="font-black text-rose-600">{diseaseLimit} / {datasetMaxLimits[dataset]?.diseases || 300}</span></div>
+            <input type="range" min="10" max={datasetMaxLimits[dataset]?.diseases || 300} step="1" value={diseaseLimit} onChange={e=>setDiseaseLimit(parseInt(e.target.value))} className="w-full accent-rose-600"/>
           </div>
 
           <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
@@ -185,17 +236,6 @@ export default function DatasetGraph({ datasetName }) {
             <label className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" className="sr-only peer" checked={showProtein} onChange={e=>setShowProtein(e.target.checked)} />
               <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-violet-500"></div>
-            </label>
-          </div>
-
-          <div className="flex items-center justify-between p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border border-rose-100 dark:border-rose-900/50">
-            <div>
-              <label className="block text-xs font-black uppercase text-rose-600 dark:text-rose-400">Tải toàn bộ dữ liệu</label>
-              <span className="text-[9px] font-bold text-rose-500/70">Bỏ qua giới hạn (Dễ lag)</span>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" className="sr-only peer" checked={showAll} onChange={e=>setShowAll(e.target.checked)} />
-              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-rose-500"></div>
             </label>
           </div>
 
@@ -220,6 +260,11 @@ export default function DatasetGraph({ datasetName }) {
 
           <button onClick={handleGenerate} disabled={loading} className="w-full py-4 bg-teal-600 hover:bg-teal-500 text-white rounded-2xl font-black shadow-lg shadow-teal-900/20 flex items-center justify-center gap-2 transition-all active:scale-95">
             {loading ? <span className="animate-pulse">ĐANG TẢI...</span> : <><PlayCircle size={18}/> TẠO BIỂU ĐỒ</>}
+          </button>
+
+          <button onClick={() => setShowStatsModal(true)} className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95 border dark:border-slate-700">
+            <Clipboard size={16} className="text-teal-500" />
+            Tóm tắt dữ liệu benchmark
           </button>
         </div>
 
@@ -296,6 +341,237 @@ export default function DatasetGraph({ datasetName }) {
 
       {/* DETAIL DRAWER */}
       {selectedNode && <DetailDrawer node={selectedNode} onClose={() => setSelectedNode(null)} />}
+
+      {/* BENCHMARK STATS MODAL */}
+      {showStatsModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-5xl rounded-[32px] border dark:border-slate-800 shadow-2xl p-8 max-h-[90vh] overflow-y-auto relative animate-in zoom-in-95 duration-200">
+            
+            {/* Close Button */}
+            <button 
+              onClick={() => setShowStatsModal(false)} 
+              className="absolute top-6 right-6 p-3 bg-slate-50 dark:bg-slate-800 hover:bg-rose-600 hover:text-white rounded-full transition-all text-slate-400 shadow-sm"
+            >
+              <X size={20}/>
+            </button>
+
+            {/* Modal Header */}
+            <div className="flex items-center gap-3 mb-6">
+              <Clipboard className="text-teal-500" size={26} />
+              <div>
+                <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100">
+                  Dữ liệu Benchmark hệ thống
+                </h3>
+                <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 mt-1">
+                  Thông số thực thể, liên kết và chi tiết phân phối phân tách theo từng tập dữ liệu chuẩn
+                </p>
+              </div>
+            </div>
+
+            {/* Tabs Header */}
+            <div className="flex border-b dark:border-slate-800 mb-6 gap-6">
+              <button 
+                onClick={() => setModalTab('summary')}
+                className={`pb-3 font-black text-xs uppercase tracking-widest transition-all relative ${modalTab === 'summary' ? 'text-teal-500 border-b-2 border-teal-500' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
+              >
+                Tổng quan benchmark
+              </button>
+              <button 
+                onClick={() => setModalTab('details')}
+                className={`pb-3 font-black text-xs uppercase tracking-widest transition-all relative ${modalTab === 'details' ? 'text-teal-500 border-b-2 border-teal-500' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
+              >
+                Chi tiết liên kết thực tế ({detailDataset}-dataset)
+              </button>
+            </div>
+
+            {modalTab === 'summary' ? (
+              <>
+                {/* Table Content */}
+                <div className="overflow-x-auto border dark:border-slate-800 rounded-2xl">
+                  <table className="w-full text-left border-collapse min-w-[800px]">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <tr>
+                        <th className="px-6 py-4">Dataset</th>
+                        <th className="px-6 py-4 text-center">Thuốc</th>
+                        <th className="px-6 py-4 text-center">Bệnh</th>
+                        <th className="px-6 py-4 text-center">Protein</th>
+                        <th className="px-6 py-4 text-center">Liên kết Thuốc–Bệnh</th>
+                        <th className="px-6 py-4 text-center">Liên kết Thuốc–Protein</th>
+                        <th className="px-6 py-4 text-center">Liên kết Bệnh–Protein</th>
+                        <th className="px-6 py-4 text-right">Sparsity</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y dark:divide-slate-800">
+                      {[
+                        { dataset: 'B-dataset', drugs: 269, diseases: 598, proteins: 1021, drug_disease: 18416, drug_protein: 3110, disease_protein: 5898, sparsity: '0.1144', colorClass: 'text-indigo-600 dark:text-indigo-400' },
+                        { dataset: 'C-dataset', drugs: 663, diseases: 409, proteins: 993, drug_disease: 2532, drug_protein: 3773, disease_protein: 10734, sparsity: '0.0093', colorClass: 'text-teal-600 dark:text-teal-400' },
+                        { dataset: 'F-dataset', drugs: 593, diseases: 313, proteins: 2741, drug_disease: 1933, drug_protein: 3243, disease_protein: 54265, sparsity: '0.0104', colorClass: 'text-purple-600 dark:text-purple-400' },
+                      ].map((row, idx) => (
+                        <tr key={row.dataset} className="text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                          <td className={`px-6 py-4 font-black uppercase tracking-tight ${row.colorClass}`}>{row.dataset}</td>
+                          <td className="px-6 py-4 text-center text-blue-600 dark:text-blue-400 font-extrabold">{row.drugs.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-rose-600 dark:text-rose-400 font-extrabold">{row.diseases.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-emerald-600 dark:text-emerald-400 font-extrabold">{row.proteins.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-slate-700 dark:text-slate-300 font-bold">{row.drug_disease.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-slate-700 dark:text-slate-300 font-bold">{row.drug_protein.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center text-slate-700 dark:text-slate-300 font-bold">{row.disease_protein.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right text-slate-500 dark:text-slate-400 font-mono font-semibold">{row.sparsity}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer info */}
+                <div className="mt-6 flex justify-between items-center text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                  <span>* Bảng tóm tắt thông số phân phối benchmark</span>
+                  <span>* Nguồn: Table 1 — Summary of three benchmark datasets (Paper gốc)</span>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Filter Panel */}
+                <div className="flex flex-wrap gap-4 items-center justify-between mb-6 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border dark:border-slate-800/80">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Tập dữ liệu:</span>
+                    <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-xl">
+                      {['B', 'C', 'F'].map(ds => (
+                        <button
+                          key={ds}
+                          onClick={() => setDetailDataset(ds)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${detailDataset === ds ? 'bg-teal-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:text-teal-500'}`}
+                        >
+                          {ds}-dataset
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Loại liên kết:</span>
+                    <select 
+                      value={detailLinkType} 
+                      onChange={e => setDetailLinkType(e.target.value)}
+                      className="px-3 py-2 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-xs font-bold outline-none text-slate-700 dark:text-slate-200"
+                    >
+                      <option value="all">Tất cả liên kết</option>
+                      <option value="drug_disease">Thuốc – Bệnh</option>
+                      <option value="drug_protein">Thuốc – Protein</option>
+                      <option value="disease_protein">Bệnh – Protein</option>
+                    </select>
+                  </div>
+
+                  <div className="relative w-64">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="text"
+                      placeholder="Tìm tên thực thể..."
+                      value={detailSearch}
+                      onChange={e => setDetailSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-xs font-bold outline-none text-slate-700 dark:text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                {/* Table Data */}
+                {detailLoading ? (
+                  <div className="py-20 flex items-center justify-center">
+                    <div className="w-8 h-8 border-3 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                ) : detailData.length === 0 ? (
+                  <div className="py-20 text-center text-slate-400 font-bold text-xs uppercase tracking-wider">
+                    Không tìm thấy liên kết nào khớp
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border dark:border-slate-800 rounded-2xl">
+                    <table className="w-full text-left border-collapse min-w-[700px]">
+                      <thead className="bg-slate-50 dark:bg-slate-800/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        <tr>
+                          <th className="px-6 py-4">Thực thể 1 (Source)</th>
+                          <th className="px-6 py-4">Loại liên kết</th>
+                          <th className="px-6 py-4">Thực thể 2 (Target)</th>
+                          <th className="px-6 py-4 text-center">Độ dày / Trọng số (Weight)</th>
+                          <th className="px-6 py-4 text-right">Chi tiết liên kết</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y dark:divide-slate-800">
+                        {detailData.map((row, idx) => {
+                          const sourceColor = row.source_type === 'drug' ? 'text-blue-500' : 'text-rose-500';
+                          const targetColor = row.target_type === 'protein' ? 'text-emerald-500' : row.target_type === 'disease' ? 'text-rose-500' : 'text-slate-700 dark:text-slate-200';
+                          return (
+                            <tr key={idx} className="text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                              <td className="px-6 py-4">
+                                <div className="flex flex-col">
+                                  <span className="text-[9px] text-slate-400 uppercase">{row.source_type}</span>
+                                  <span className={`text-sm font-black ${sourceColor}`}>{row.source}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full text-[10px] uppercase font-black tracking-wider">
+                                  {row.type_label}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex flex-col">
+                                  <span className="text-[9px] text-slate-400 uppercase">{row.target_type}</span>
+                                  <span className={`text-sm font-black ${targetColor}`}>{row.target}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3 justify-center">
+                                  <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{row.weight}</span>
+                                  <div className="w-16 bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden border dark:border-slate-700">
+                                    <div 
+                                      className="bg-teal-500 h-full rounded-full" 
+                                      style={{ width: `${Math.min(100, ((row.weight - 1.0) / 4.0) * 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-right text-slate-500 dark:text-slate-400 font-medium">
+                                {row.details}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Pagination */}
+                {detailTotal > 0 && (
+                  <div className="mt-6 flex flex-wrap gap-4 items-center justify-between bg-slate-50 dark:bg-slate-800/30 p-4 rounded-2xl border dark:border-slate-800">
+                    <span className="text-xs font-bold text-slate-500">
+                      Hiển thị liên kết {Math.min(detailTotal, (detailPage - 1) * 10 + 1)} - {Math.min(detailTotal, detailPage * 10)} trong số <strong>{detailTotal.toLocaleString()}</strong> liên kết thực tế
+                    </span>
+                    
+                    <div className="flex items-center gap-2">
+                      <button 
+                        disabled={detailPage === 1 || detailLoading}
+                        onClick={() => setDetailPage(p => Math.max(1, p - 1))}
+                        className="px-4 py-2 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-xs font-black disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-slate-700 dark:text-slate-200"
+                      >
+                        Trang trước
+                      </button>
+                      <span className="px-4 py-2 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-900/60 rounded-xl text-xs font-black text-teal-600 dark:text-teal-400">
+                        Trang {detailPage} / {Math.ceil(detailTotal / 10)}
+                      </span>
+                      <button 
+                        disabled={detailPage * 10 >= detailTotal || detailLoading}
+                        onClick={() => setDetailPage(p => p + 1)}
+                        className="px-4 py-2 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-xs font-black disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-slate-700 dark:text-slate-200"
+                      >
+                        Trang sau
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

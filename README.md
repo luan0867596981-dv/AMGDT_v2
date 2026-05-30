@@ -42,9 +42,22 @@ Dự án cung cấp một giao diện quản trị chuyên nghiệp, cho phép c
 ## 🛠️ Cài đặt Môi trường (Installation)
 
 ### 1. Yêu cầu hệ thống
-- **Python**: Phiên bản 3.9 hoặc mới hơn.
+- **Python**: Phiên bản 3.10 hoặc mới hơn.
 - **Node.js**: Phiên bản 16.x hoặc mới hơn (khuyên dùng bản LTS).
 - **Trình quản lý gói**: `npm` hoặc `yarn`, `pip`.
+
+#### Danh sách phiên bản thư viện Python chính (Đã kiểm thử):
+| Thư viện | Phiên bản | Mô tả |
+| :--- | :---: | :--- |
+| `torch` | `2.9.0` | Thư viện tensor và học sâu |
+| `torch-geometric` | `2.7.0` | Thư viện Graph Neural Networks |
+| `pandas` | `2.3.3` | Xử lý dữ liệu bảng (CSV) |
+| `numpy` | `2.2.6` | Tính toán số học đại số tuyến tính |
+| `fastapi` | `0.135.3` | Framework backend API chính |
+| `uvicorn` | `0.44.0` | ASGI server chạy FastAPI |
+| `sqlalchemy` | `2.0.49` | ORM kết nối SQLite Database |
+| `scikit-learn` | `1.7.2` | Đánh giá chỉ số hiệu năng (AUC, AUPR) |
+
 
 ### 2. Tải mã nguồn
 ```bash

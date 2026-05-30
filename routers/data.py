@@ -442,6 +442,207 @@ async def get_protein_structure(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _load_associations_and_mappings(dataset: str):
+    from main import load_dataset_resources
+    ds_name = _normalize_dataset(dataset)
+    letter = ds_name[0]
+    if letter not in ("B", "C", "F"):
+        raise ValueError(f"Invalid dataset: {dataset}")
+        
+    model, drug_sim, disease_sim, d_names, d_smiles, di_names, node_ids = load_dataset_resources(ds_name, require_model=False)
+    
+    root = config.root_dir
+    
+    dd_path = os.path.join(root, 'data', 'raw', ds_name, 'DrugDiseaseAssociationNumber.csv')
+    dp_path = os.path.join(root, 'data', 'raw', ds_name, 'DrugProteinAssociationNumber.csv')
+    pd_path = os.path.join(root, 'data', 'raw', ds_name, 'ProteinDiseaseAssociationNumber.csv')
+    
+    import pandas as pd
+    df_dd = pd.read_csv(dd_path) if os.path.exists(dd_path) else pd.DataFrame(columns=['drug', 'disease'])
+    df_dp = pd.read_csv(dp_path) if os.path.exists(dp_path) else pd.DataFrame(columns=['drug', 'protein'])
+    df_pd = pd.read_csv(pd_path) if os.path.exists(pd_path) else pd.DataFrame(columns=['disease', 'protein'])
+    
+    # Check columns for pd
+    pd_disease_col = 'disease'
+    pd_protein_col = 'protein'
+    if len(df_pd.columns) >= 2:
+        if 'disease' not in df_pd.columns:
+            pd_disease_col = df_pd.columns[0]
+        if 'protein' not in df_pd.columns:
+            pd_protein_col = df_pd.columns[1]
+            
+    # Build maps
+    drug_proteins = {}
+    protein_drugs = {}
+    for _, row in df_dp.iterrows():
+        d = int(row['drug'])
+        p = int(row['protein'])
+        drug_proteins.setdefault(d, set()).add(p)
+        protein_drugs.setdefault(p, set()).add(d)
+        
+    disease_proteins = {}
+    protein_diseases = {}
+    for _, row in df_pd.iterrows():
+        di = int(row[pd_disease_col])
+        p = int(row[pd_protein_col])
+        disease_proteins.setdefault(di, set()).add(p)
+        protein_diseases.setdefault(p, set()).add(di)
+        
+    drug_diseases = {}
+    disease_drugs = {}
+    for _, row in df_dd.iterrows():
+        d = int(row['drug'])
+        di = int(row['disease'])
+        drug_diseases.setdefault(d, set()).add(di)
+        disease_drugs.setdefault(di, set()).add(d)
+        
+    proteins_list = _load_protein_data(ds_name)
+    
+    return {
+        "d_names": d_names,
+        "d_smiles": d_smiles,
+        "di_names": di_names,
+        "node_ids": node_ids,
+        "proteins_list": proteins_list,
+        "df_dd": df_dd,
+        "df_dp": df_dp,
+        "df_pd": df_pd,
+        "pd_disease_col": pd_disease_col,
+        "pd_protein_col": pd_protein_col,
+        "drug_proteins": drug_proteins,
+        "protein_drugs": protein_drugs,
+        "disease_proteins": disease_proteins,
+        "protein_diseases": protein_diseases,
+        "drug_diseases": drug_diseases,
+        "disease_drugs": disease_drugs,
+        "letter": letter
+    }
+
+
+@router.get("/graph/connections")
+async def get_graph_connections(
+    dataset: str = "B-dataset",
+    link_type: str = "all",
+    page: int = 1,
+    limit: int = 50,
+    search: str = ""
+):
+    try:
+        data = _load_associations_and_mappings(dataset)
+        d_names = data["d_names"]
+        di_names = data["di_names"]
+        proteins_list = data["proteins_list"]
+        df_dd = data["df_dd"]
+        df_dp = data["df_dp"]
+        df_pd = data["df_pd"]
+        pd_disease_col = data["pd_disease_col"]
+        pd_protein_col = data["pd_protein_col"]
+        drug_proteins = data["drug_proteins"]
+        disease_proteins = data["disease_proteins"]
+        drug_diseases = data["drug_diseases"]
+        protein_drugs = data["protein_drugs"]
+        protein_diseases = data["protein_diseases"]
+        disease_drugs = data["disease_drugs"]
+        letter = data["letter"]
+
+        connections = []
+
+        # Drug-Disease Links
+        if link_type in ("all", "drug_disease"):
+            for _, row in df_dd.iterrows():
+                d = int(row['drug'])
+                di = int(row['disease'])
+                if d < len(d_names) and di < len(di_names):
+                    d_name = d_names[d]
+                    di_name = di_names[di]
+                    
+                    shared_p = len(drug_proteins.get(d, set()) & disease_proteins.get(di, set()))
+                    weight = round(1.0 + shared_p * 0.5, 2)
+                    
+                    connections.append({
+                        "source": d_name,
+                        "source_type": "drug",
+                        "target": di_name,
+                        "target_type": "disease",
+                        "type": "drug_disease",
+                        "type_label": "Thuốc – Bệnh",
+                        "weight": weight,
+                        "shared_count": shared_p,
+                        "details": f"Chia sẻ {shared_p} protein" if shared_p > 0 else "Không chia sẻ protein"
+                    })
+
+        # Drug-Protein Links
+        if link_type in ("all", "drug_protein"):
+            for _, row in df_dp.iterrows():
+                d = int(row['drug'])
+                p = int(row['protein'])
+                if d < len(d_names) and p < len(proteins_list):
+                    d_name = d_names[d]
+                    p_name = proteins_list[p]["name"]
+                    
+                    shared_di = len(drug_diseases.get(d, set()) & protein_diseases.get(p, set()))
+                    weight = round(1.0 + shared_di * 0.5, 2)
+                    
+                    connections.append({
+                        "source": d_name,
+                        "source_type": "drug",
+                        "target": p_name,
+                        "target_type": "protein",
+                        "type": "drug_protein",
+                        "type_label": "Thuốc – Protein",
+                        "weight": weight,
+                        "shared_count": shared_di,
+                        "details": f"Liên quan {shared_di} bệnh chung" if shared_di > 0 else "Không có bệnh chung"
+                    })
+
+        # Disease-Protein Links
+        if link_type in ("all", "disease_protein"):
+            for _, row in df_pd.iterrows():
+                di = int(row[pd_disease_col])
+                p = int(row[pd_protein_col])
+                if di < len(di_names) and p < len(proteins_list):
+                    di_name = di_names[di]
+                    p_name = proteins_list[p]["name"]
+                    
+                    shared_d = len(disease_drugs.get(di, set()) & protein_drugs.get(p, set()))
+                    weight = round(1.0 + shared_d * 0.5, 2)
+                    
+                    connections.append({
+                        "source": di_name,
+                        "source_type": "disease",
+                        "target": p_name,
+                        "target_type": "protein",
+                        "type": "disease_protein",
+                        "type_label": "Bệnh – Protein",
+                        "weight": weight,
+                        "shared_count": shared_d,
+                        "details": f"Liên quan {shared_d} thuốc chung" if shared_d > 0 else "Không có thuốc chung"
+                    })
+
+        # Apply search filter
+        if search:
+            q = search.lower().strip()
+            connections = [
+                c for c in connections
+                if q in c["source"].lower() or q in c["target"].lower()
+            ]
+
+        total = len(connections)
+        start = (page - 1) * limit
+        end = start + limit
+        
+        return {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "data": connections[start:end]
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/graph/network")
 async def get_graph_network(
     dataset: str = "C-dataset",
@@ -451,7 +652,6 @@ async def get_graph_network(
     search: str = "",
     show_all: str = "false"
 ):
-
     try:
         datasets_to_load = []
         if dataset == "all":
@@ -462,88 +662,152 @@ async def get_graph_network(
             elif dataset == "F": dataset = "F-dataset"
             datasets_to_load = [dataset]
 
-        from main import load_dataset_resources
-        import pandas as pd
-        root = config.root_dir
-
         all_nodes_map = {}
         all_real_edges = []
 
         for ds in datasets_to_load:
             try:
-                model, drug_sim, disease_sim, d_names, d_smiles, di_names, node_ids = load_dataset_resources(ds, require_model=False)
-                num_drugs = len(d_names)
+                data = _load_associations_and_mappings(ds)
+                d_names = data["d_names"]
+                d_smiles = data["d_smiles"]
+                di_names = data["di_names"]
+                node_ids = data["node_ids"]
+                df_dd = data["df_dd"]
+                drug_proteins = data["drug_proteins"]
+                disease_proteins = data["disease_proteins"]
+                letter = data["letter"]
 
-                assoc_path = os.path.join(root, 'data', 'raw', ds, 'DrugDiseaseAssociationNumber.csv')
-                if os.path.exists(assoc_path):
-                    df_assoc = pd.read_csv(assoc_path)
+                if search:
+                    match_drug_idxs = [i for i, name in enumerate(d_names) if search.lower() in name.lower()]
+                    match_dis_idxs = [i for i, name in enumerate(di_names) if search.lower() in name.lower()]
+                    df_assoc = df_dd[
+                        df_dd['drug'].isin(match_drug_idxs) |
+                        df_dd['disease'].isin(match_dis_idxs)
+                    ]
+                else:
+                    df_assoc = df_dd
 
-                    if search:
-                        match_drug_idxs = [i for i, name in enumerate(d_names) if search.lower() in name.lower()]
-                        match_dis_idxs = [i for i, name in enumerate(di_names) if search.lower() in name.lower()]
-                        df_assoc = df_assoc[
-                            df_assoc['drug'].isin(match_drug_idxs) |
-                            df_assoc['disease'].isin(match_dis_idxs)
-                        ]
+                # Filter nodes based on drug_limit and disease_limit
+                if len(df_assoc) > 0:
+                    top_drugs = df_assoc['drug'].value_counts().index[:drug_limit].tolist()
+                    top_diseases = df_assoc['disease'].value_counts().index[:disease_limit].tolist()
+                    df_sample = df_assoc[df_assoc['drug'].isin(top_drugs) & df_assoc['disease'].isin(top_diseases)]
+                else:
+                    df_sample = df_assoc
 
-                    if show_all.lower() == "true":
-                        df_sample = df_assoc
-                    else:
-                        sample_size = min(150 // len(datasets_to_load), len(df_assoc))
-                        df_sample = df_assoc.sample(n=sample_size) if len(df_assoc) > 0 else df_assoc
+                for _, row in df_sample.iterrows():
+                    d_idx = int(row['drug'])
+                    di_idx = int(row['disease'])
+                    if d_idx < len(d_names) and di_idx < len(di_names):
+                        s_id = f"{letter}_drug_{d_idx}"
+                        t_id = f"{letter}_dis_{di_idx}"
 
-                    for _, row in df_sample.iterrows():
-                        d_idx = int(row['drug'])
-                        di_idx = int(row['disease'])
-                        if d_idx < len(d_names) and di_idx < len(di_names):
-                            s_id = f"{ds[0]}_drug_{d_idx}"
-                            t_id = f"{ds[0]}_dis_{di_idx}"
+                        # Calculate real weight based on shared proteins
+                        shared_p = len(drug_proteins.get(d_idx, set()) & disease_proteins.get(di_idx, set()))
+                        weight = round(1.0 + shared_p * 0.5, 2)
 
-                            all_real_edges.append({
-                                "source": s_id,
-                                "target": t_id,
-                                "weight": 0.6 + random.random() * 0.4,
-                                "dataset": ds[0]
-                            })
+                        all_real_edges.append({
+                            "source": s_id,
+                            "target": t_id,
+                            "weight": weight,
+                            "dataset": letter
+                        })
 
-                            if s_id not in all_nodes_map:
-                                real_id = node_ids[d_idx] if (node_ids and d_idx < len(node_ids)) else f"D{d_idx}"
-                                all_nodes_map[s_id] = {
-                                    "id": s_id, "label": d_names[d_idx], "type": "drug", "group": "drug",
-                                    "val": 28, "realId": real_id, "dataset": ds[0],
-                                    "smiles": d_smiles[d_idx] if d_idx < len(d_smiles) else ""
-                                }
+                        if s_id not in all_nodes_map:
+                            real_id = node_ids[d_idx] if (node_ids and d_idx < len(node_ids)) else f"D{d_idx}"
+                            all_nodes_map[s_id] = {
+                                "id": s_id, "label": d_names[d_idx], "type": "drug", "group": "drug",
+                                "val": 28, "realId": real_id, "dataset": letter,
+                                "smiles": d_smiles[d_idx] if d_idx < len(d_smiles) else ""
+                            }
 
-                            if t_id not in all_nodes_map:
-                                num_drugs = len(d_names)
-                                real_id = node_ids[num_drugs + di_idx] if (node_ids and (num_drugs + di_idx) < len(node_ids)) else f"DI{di_idx}"
-                                all_nodes_map[t_id] = {
-                                    "id": t_id, "label": di_names[di_idx], "type": "disease", "group": "disease",
-                                    "val": 22, "realId": real_id, "dataset": ds[0]
-                                }
+                        if t_id not in all_nodes_map:
+                            num_drugs = len(d_names)
+                            real_id = node_ids[num_drugs + di_idx] if (node_ids and (num_drugs + di_idx) < len(node_ids)) else f"DI{di_idx}"
+                            all_nodes_map[t_id] = {
+                                "id": t_id, "label": di_names[di_idx], "type": "disease", "group": "disease",
+                                "val": 22, "realId": real_id, "dataset": letter
+                            }
             except Exception as e:
                 print(f"Error loading {ds}: {e}")
                 continue
 
         if show_protein.lower() == "true":
-            visible_node_ids = list(all_nodes_map.keys())
-            if visible_node_ids:
-                for i in range(min(15, len(visible_node_ids))):
-                    p_id = f"protein_{i}"
-                    p_name = f"P{i+100:04d}"
-                    if p_id not in all_nodes_map:
-                        all_nodes_map[p_id] = {
-                            "id": p_id, "label": p_name, "type": "protein", "group": "protein",
-                            "val": 18, "realId": f"P{i:04d}", "dataset": "Common"
-                        }
+            for ds in datasets_to_load:
+                try:
+                    data = _load_associations_and_mappings(ds)
+                    df_dp = data["df_dp"]
+                    df_pd = data["df_pd"]
+                    proteins_list = data["proteins_list"]
+                    drug_proteins = data["drug_proteins"]
+                    disease_proteins = data["disease_proteins"]
+                    drug_diseases = data["drug_diseases"]
+                    protein_drugs = data["protein_drugs"]
+                    protein_diseases = data["protein_diseases"]
+                    disease_drugs = data["disease_drugs"]
+                    letter = data["letter"]
 
-                    target_node = random.choice(visible_node_ids)
-                    all_real_edges.append({
-                        "source": p_id,
-                        "target": target_node,
-                        "weight": 0.5,
-                        "dataset": "P"
-                    })
+                    # Visible drugs and diseases for this dataset
+                    ds_visible_drugs = [int(n.split("_")[-1]) for n in all_nodes_map.keys() if n.startswith(f"{letter}_drug_")]
+                    ds_visible_diseases = [int(n.split("_")[-1]) for n in all_nodes_map.keys() if n.startswith(f"{letter}_dis_")]
+
+                    # Find all connected protein indices (no arbitrary limit!)
+                    connected_proteins = set()
+                    for d in ds_visible_drugs:
+                        connected_proteins.update(drug_proteins.get(d, set()))
+                    for di in ds_visible_diseases:
+                        connected_proteins.update(disease_proteins.get(di, set()))
+
+                    # Add protein nodes
+                    for p in connected_proteins:
+                        if p < len(proteins_list):
+                            p_id = f"{letter}_prot_{p}"
+                            p_name = proteins_list[p]["name"]
+                            uniprot_id = proteins_list[p]["uniprot_id"]
+                            real_id = proteins_list[p]["id"]
+
+                            if p_id not in all_nodes_map:
+                                all_nodes_map[p_id] = {
+                                    "id": p_id, "label": p_name, "type": "protein", "group": "protein",
+                                    "val": 18, "realId": uniprot_id, "dataset": letter
+                                }
+
+                    # Add Drug-Protein edges
+                    for d in ds_visible_drugs:
+                        for p in drug_proteins.get(d, set()):
+                            if p in connected_proteins and p < len(proteins_list):
+                                s_id = f"{letter}_drug_{d}"
+                                t_id = f"{letter}_prot_{p}"
+
+                                shared_di = len(drug_diseases.get(d, set()) & protein_diseases.get(p, set()))
+                                weight = round(1.0 + shared_di * 0.5, 2)
+
+                                all_real_edges.append({
+                                    "source": s_id,
+                                    "target": t_id,
+                                    "weight": weight,
+                                    "dataset": letter
+                                })
+
+                    # Add Disease-Protein edges
+                    for di in ds_visible_diseases:
+                        for p in disease_proteins.get(di, set()):
+                            if p in connected_proteins and p < len(proteins_list):
+                                s_id = f"{letter}_prot_{p}"
+                                t_id = f"{letter}_dis_{di}"
+
+                                shared_d = len(disease_drugs.get(di, set()) & protein_drugs.get(p, set()))
+                                weight = round(1.0 + shared_d * 0.5, 2)
+
+                                all_real_edges.append({
+                                    "source": s_id,
+                                    "target": t_id,
+                                    "weight": weight,
+                                    "dataset": letter
+                                })
+                except Exception as e:
+                    print(f"Error loading proteins for {ds}: {e}")
+                    continue
 
         return {
             "nodes": list(all_nodes_map.values()),
@@ -551,6 +815,7 @@ async def get_graph_network(
             "stats": {
                 "drug_count": len([n for n in all_nodes_map.values() if n["type"] == "drug"]),
                 "disease_count": len([n for n in all_nodes_map.values() if n["type"] == "disease"]),
+                "protein_count": len([n for n in all_nodes_map.values() if n["type"] == "protein"]),
                 "total_edges": len(all_real_edges)
             }
         }

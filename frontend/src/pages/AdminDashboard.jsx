@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { ShieldAlert, Users, Database, Activity, GitCommit, Target } from 'lucide-react';
 
@@ -6,6 +6,14 @@ export default function AdminDashboard() {
   const { user, token } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // States for user activity logs
+  const [logsData, setLogsData] = useState([]);
+  const [logsPage, setLogsPage] = useState(1);
+  const [logsTotal, setLogsTotal] = useState(0);
+  const [logsLimit] = useState(10);
+  const [logsActionFilter, setLogsActionFilter] = useState('');
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -26,6 +34,29 @@ export default function AdminDashboard() {
         setLoading(false); 
       });
   }, [token]);
+
+  const fetchLogs = useCallback(() => {
+    if (!token) return;
+    setLogsLoading(true);
+    let url = `http://127.0.0.1:8000/admin/logs?page=${logsPage}&limit=${logsLimit}`;
+    if (logsActionFilter) {
+      url += `&action=${logsActionFilter}`;
+    }
+    fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => {
+        setLogsData(d.logs || []);
+        setLogsTotal(d.total || 0);
+      })
+      .catch(e => console.error("Admin Logs Fetch Error:", e))
+      .finally(() => setLogsLoading(false));
+  }, [token, logsPage, logsActionFilter, logsLimit]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
 
   if (user?.role !== 'admin') {
     return (
@@ -175,6 +206,126 @@ export default function AdminDashboard() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* 2.5 Bảng Nhật ký hoạt động */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border dark:border-slate-800 shadow-sm">
+          <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
+            <div>
+              <h3 className="font-black text-slate-700 dark:text-slate-200 uppercase text-sm tracking-widest flex items-center gap-2">
+                <Activity size={18} className="text-teal-500"/> Nhật ký hoạt động hệ thống
+              </h3>
+              <p className="text-xs text-slate-400 font-bold mt-1">Ghi nhận các thao tác đăng nhập, đăng ký, tra cứu dự đoán...</p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-black uppercase text-slate-400">Lọc hành động:</span>
+              <select 
+                value={logsActionFilter} 
+                onChange={e => { setLogsActionFilter(e.target.value); setLogsPage(1); }}
+                className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-xs font-bold outline-none text-slate-700 dark:text-slate-200"
+              >
+                <option value="">Tất cả</option>
+                <option value="LOGIN">LOGIN (Đăng nhập)</option>
+                <option value="LOGOUT">LOGOUT (Đăng xuất)</option>
+                <option value="REGISTER">REGISTER (Đăng ký)</option>
+                <option value="PREDICT">PREDICT (Dự đoán)</option>
+                <option value="VIEW_STATS">VIEW_STATS (Xem thống kê)</option>
+                <option value="DELETE_USER">DELETE_USER (Xóa user)</option>
+              </select>
+            </div>
+          </div>
+
+          {logsLoading ? (
+            <div className="py-12 flex items-center justify-center">
+              <div className="w-8 h-8 border-3 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : logsData.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 font-bold text-xs uppercase tracking-wider">
+              Không có nhật ký hoạt động nào
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-[10px] uppercase text-slate-400 border-b dark:border-slate-800">
+                    <tr>
+                      <th className="pb-3 font-black">Người dùng</th>
+                      <th className="pb-3 font-black">Hành động</th>
+                      <th className="pb-3 font-black">Chi tiết thao tác</th>
+                      <th className="pb-3 font-black">Địa chỉ IP</th>
+                      <th className="pb-3 font-black text-right">Thời gian</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {logsData.map((log) => {
+                      const formatDate = (isoStr) => {
+                        if (!isoStr) return '';
+                        try {
+                          const d = new Date(isoStr);
+                          const pad = (n) => String(n).padStart(2, '0');
+                          return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+                        } catch (e) {
+                          return isoStr;
+                        }
+                      };
+
+                      return (
+                        <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-300">
+                          <td className="py-4 font-bold text-slate-700 dark:text-slate-200">
+                            {log.user_id ? `User (ID: ${log.user_id})` : "Khách (Guest)"}
+                          </td>
+                          <td className="py-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${
+                              log.action === 'LOGIN' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400' :
+                              log.action === 'LOGOUT' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/30 dark:text-rose-400' :
+                              log.action === 'PREDICT' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/30 dark:text-blue-400' : 
+                              log.action === 'REGISTER' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-400' :
+                              'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                            }`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="py-4 font-semibold max-w-xs truncate" title={log.detail}>
+                            {log.detail || 'N/A'}
+                          </td>
+                          <td className="py-4 font-mono text-xs text-slate-400">{log.ip_address || 'Unknown'}</td>
+                          <td className="py-4 text-right font-mono text-xs text-slate-400">{formatDate(log.created_at)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Phân trang */}
+              {logsTotal > 0 && (
+                <div className="mt-6 flex items-center justify-between border-t dark:border-slate-800 pt-6">
+                  <span className="text-xs text-slate-400 font-bold">
+                    Hiển thị {Math.min(logsTotal, (logsPage - 1) * logsLimit + 1)} - {Math.min(logsTotal, logsPage * logsLimit)} trong số {logsTotal} nhật ký
+                  </span>
+                  
+                  <div className="flex items-center gap-2">
+                    <button 
+                      disabled={logsPage === 1}
+                      onClick={() => setLogsPage(p => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-xs font-black disabled:opacity-50 text-slate-600 dark:text-slate-300 transition-colors"
+                    >
+                      Trước
+                    </button>
+                    <span className="text-xs font-black text-teal-600 px-2">Trang {logsPage} / {Math.ceil(logsTotal / logsLimit)}</span>
+                    <button 
+                      disabled={logsPage * logsLimit >= logsTotal}
+                      onClick={() => setLogsPage(p => p + 1)}
+                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-xs font-black disabled:opacity-50 text-slate-600 dark:text-slate-300 transition-colors"
+                    >
+                      Sau
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
       </div>
